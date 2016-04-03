@@ -17,9 +17,11 @@ namespace M101DotNet.WebApp.Controllers
         public async Task<ActionResult> Index()
         {
             var blogContext = new BlogContext();
-            // XXX WORK HERE
-            // find the most recent 10 posts and order them
-            // from newest to oldest
+           
+            var recentPosts = await blogContext.Posts.Find(new BsonDocument())
+                                                     .SortByDescending(t=>t.CreatedAtUtc)
+                                                     .Limit(10)
+                                                     .ToListAsync();
 
             var model = new IndexModel
             {
@@ -44,8 +46,16 @@ namespace M101DotNet.WebApp.Controllers
             }
 
             var blogContext = new BlogContext();
-            // XXX WORK HERE
-            // Insert the post into the posts collection
+            var post = new Post()
+            {
+                Author = this.User.Identity.Name,
+                Title = model.Title,
+                Content = model.Content,
+                CreatedAtUtc = DateTimeOffset.Now,
+                Comments = new List<Comment>(),
+                Tags = model.Tags.Split(new []{ ',', '\n', ' ',';' }).ToList()
+            };
+            await blogContext.Posts.InsertOneAsync(post);
             return RedirectToAction("Post", new { id = post.Id });
         }
 
@@ -54,8 +64,8 @@ namespace M101DotNet.WebApp.Controllers
         {
             var blogContext = new BlogContext();
 
-            // XXX WORK HERE
-            // Find the post with the given identifier
+            var post = await blogContext.Posts.Find(t => t.Id == id)
+                                        .FirstAsync();
 
             if (post == null)
             {
@@ -75,10 +85,14 @@ namespace M101DotNet.WebApp.Controllers
         {
             var blogContext = new BlogContext();
 
-            // XXX WORK HERE
-            // Find all the posts with the given tag if it exists.
-            // Otherwise, return all the posts.
-            // Each of these results should be in descending order.
+            var posts = await blogContext.Posts.Find(t => t.Tags.Contains(tag))
+                                               .SortByDescending(t => t.CreatedAtUtc)
+                                               .ToListAsync();
+
+            if(posts.Count == 0)
+                posts = await blogContext.Posts.Find(new BsonDocument())
+                                                     .SortByDescending(t => t.CreatedAtUtc)
+                                                     .ToListAsync();
 
             return View(posts);
         }
@@ -92,9 +106,17 @@ namespace M101DotNet.WebApp.Controllers
             }
 
             var blogContext = new BlogContext();
-            // XXX WORK HERE
-            // add a comment to the post identified by model.PostId.
-            // you can get the author from "this.User.Identity.Name"
+            
+            var comment = new Comment()
+            {
+                Author = this.User.Identity.Name,
+                Content = model.Content,
+                CreatedAtUtc = DateTimeOffset.Now
+            };
+
+            await blogContext.Posts.UpdateOneAsync(
+                  Builders<Post>.Filter.Eq(t=>t.Id, model.PostId),
+                  Builders<Post>.Update.Push(t => t.Comments, comment));
 
             return RedirectToAction("Post", new { id = model.PostId });
         }
